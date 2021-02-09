@@ -1,0 +1,410 @@
+/**
+ * [jQuery的简化版本]
+ * @param  {[type]} window    [当前窗口]
+ * @author:[huadw]
+ * @version [1.0.5]
+ * @date [2021.1.5]  
+ * @说明：本封装主要基于webkit内核的浏览器，给iPanel的advanced使用。
+ * 为了精简代码，减少代码量，不做对ie的兼容
+ */
+if (typeof $ == 'undefined') { //页面不存在jquery的时候，引用这个
+    (function(window) {
+        var jQuery = function(selector, context) {
+                return new jQuery.fn.init(selector, context);
+            }
+            // 原型方法
+        jQuery.fn = jQuery.prototype = {
+                //版本号
+                jquery: '1.0.5',
+                // 强化构造对象
+                constructor: jQuery,
+                // 构造函数
+                init: function(selector, context) {
+                    var nodeList = [];
+                    if (typeof(selector) == 'string') {
+                        nodeList = (context || document).querySelectorAll(selector);
+                    } else if (typeof(selector) == 'function') {
+                        return $.fn.ready(selector);
+                    } else if (selector instanceof Node) {
+                        nodeList[0] = selector;
+                    } else if (selector instanceof NodeList || selector instanceof Array) {
+                        nodeList = selector;
+                    }
+                    this.length = nodeList.length;
+                    for (var i = 0; i < this.length; i += 1) {
+                        this[i] = nodeList[i];
+                    }
+                    return this;
+                },
+                // 元素长度
+                length: 0,
+                push: [].push,
+                splice: [].splice
+            }
+            // 设置构造函数init的原型
+        jQuery.fn.init.prototype = jQuery.fn;
+
+        /**
+         * 对象拓展方法
+         */
+        jQuery.extend = jQuery.fn.extend = function() {
+            var i = 1;
+            var target = arguments[0];
+            if (i == arguments.length) {
+                target = this;
+                i--;
+            }
+            for (; i < arguments.length; i++) {
+                // 遍历拓展对象中的方法与属性
+                for (var j in arguments[i]) {
+                    // 浅拷贝
+                    target[j] = arguments[i][j];
+                }
+            }
+            return target;
+        };
+
+        jQuery.extend({
+            camelCase: function(str) { //将横线命名字符串转为驼峰式
+                return str.replace(/\-(\w)/g, function(match, letter) {
+                    return letter.toUpperCase();
+                });
+            },
+            isArray: function(a) { //判断是否为数组
+                function isA(o) { return typeof(o) === "array"; }
+                return Array.isArray(a) || isA(a);
+            },
+            ajax: function(options) {
+                function empty() {}
+
+                function obj2Url(obj) {
+                    var arr = [];
+                    for (var i in obj) {
+                        arr.push(encodeURI(i) + '=' + encodeURI(obj[i]));
+                    }
+                    return arr.join('&').replace(/%20/g, '+');
+                }
+                var opt = {
+                    url: '', //请求地址
+                    sync: true, //true，异步 | false　同步，会锁死浏览器，并且open方法会报浏览器警告
+                    method: 'GET', //提交方法
+                    data: null, //提交数据
+                    dataType: 'json', //返回数据类型
+                    username: null, //账号
+                    password: null, //密码
+                    success: empty, //成功返回回调
+                    error: empty, //错误信息回调
+                    timeout: 10000 //请求超时ms
+                };
+                Object.keys(options || {}).forEach(function(key) { //传参替换默认属性
+                    opt[key] = options[key]; //直接合并对象,opt已有属性将会被options替换
+                });
+                //Object.assign(opt, options); //中间件不支持该方法
+                var abortTimeout = null;
+                var xhr = new XMLHttpRequest();
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState == 4) {
+                        xhr.onreadystatechange = empty;
+                        clearTimeout(abortTimeout);
+                        if ((xhr.status >= 200 && xhr.status < 300) || xhr.status == 304) {
+                            var result = xhr.responseText;
+                            try {
+                                if (opt.dataType == 'json') {
+                                    result = result.replace(' ', '') == '' ? null : JSON.parse(result);
+                                }
+                            } catch (e) {
+                                opt.error(e, xhr);
+                                xhr.abort();
+                            }
+                            opt.success(result, xhr);
+                        } else if (0 == xhr.status) {
+                            opt.error("跨域请求失败", xhr);
+                        } else {
+                            opt.error(xhr.statusText, xhr);
+                        }
+                    }
+                };
+                var data = opt.data ? obj2Url(opt.data) : opt.data;
+                opt.method = opt.method.toUpperCase();
+                if (opt.method == 'GET') {
+                    opt.url += (opt.url.indexOf('?') == -1 ? '?' : '&') + data;
+                }
+                xhr.open(opt.method, opt.url, opt.sync, opt.username, opt.password);
+                if (opt.method == 'POST') {
+                    xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+                }
+                if (opt.timeout > 0) {
+                    abortTimeout = setTimeout(function() {
+                        xhr.onreadystatechange = empty;
+                        xhr.abort();
+                        opt.error('网络请求超时', xhr);
+                    }, opt.timeout);
+                }
+                xhr.send(data);
+            },
+            get: function(url, fun, err) {
+                $.ajax({ url: url, success: fun, error: err });
+            },
+            post: function(url, data, fun, err) {
+                $.ajax({ url: url, data: data, success: fun, error: err });
+            }
+        });
+
+        jQuery.fn.extend({
+            css: function() { // 设置或获取css样式
+                var arg = arguments;
+                if (arg.length == 0) return;
+                if (arg.length == 1) { // 一个参数
+                    if (typeof arg[0] === "string") { // 且第一个参数为字符串获取第一个元素样式
+                        return getComputedStyle(this[0], false)[arg[0]];
+                    } else if (typeof arg[0] === "object") { // 参数为对象，为获取到的所有元素设置样式
+                        for (var i in arg[0]) {
+                            for (var j = 0; j < this.length; j++) {
+                                this[j].style[jQuery.camelCase(i)] = arg[0][i];
+                            }
+                        }
+                    }
+                } else if (arg.length > 1) { // 两个参数，为获取到的所有元素设置样式
+                    for (var i = 0; i < this.length; i++) {
+                        this[i].style[jQuery.camelCase(arg[0])] = arg[1];
+                    }
+                }
+                return this;
+            },
+
+            find: function(str) { //在当前dom对象下面查找
+                var nodeList = [];
+                var res = this.each(function() {
+                    return this.querySelectorAll(str);
+                }, 1);
+                if (res instanceof Array && res.length > 0) {
+                    for (var i = 0; i < res.length; i++) {
+                        for (var j = 0; j < res[i].length; j++) {
+                            nodeList.push(res[i][j]);
+                        }
+                    }
+                } else {
+                    nodeList = res;
+                }
+                return jQuery(nodeList);
+            },
+
+            parent: function() { //返回父元素
+                return jQuery(this.each(function() {
+                    return this.parentNode;
+                }, 1));
+            },
+
+            parents: function() {
+                return $(this.each(function() {
+                    return dir(this, "parentNode");
+                }, 1));
+
+                function dir(elem, dir, until) { // 这个函数很精髓，短短几行代码，支持遍历祖先、所有兄长、所有兄弟！
+                    var matched = [],
+                        cur = elem[dir];
+                    while (cur && cur.nodeType !== 9 && (until === undefined || cur.nodeType !== 1)) {
+                        if (cur.nodeType === 1) {
+                            matched.push(cur);
+                        }
+                        cur = cur[dir];
+                    }
+                    return matched;
+                }
+            },
+
+            each: function(_fun, _ret) { //循环
+                var res = [];
+                for (var i = 0; i < this.length; i++) {
+                    res[i] = _fun.call(this[i]);
+                }
+                if (_ret) {
+                    if (res.length == 1) {
+                        res = res[0];
+                    }
+                    return res;
+                }
+                return this;
+            },
+
+            eq: function() { //选择器列表的选择序列
+                var nodeList = [];
+                for (var i = 0; i < arguments.length; i++) {
+                    nodeList[i] = this[arguments[i]];
+                }
+                return jQuery(nodeList);
+            },
+
+            lt: function(n) { //选择器小于某个列表
+                var nodeList = [];
+                for (var i = 0; i < n; i++) {
+                    nodeList[i] = this[i];
+                }
+                return jQuery(nodeList);
+            },
+
+            gt: function(n) { //选择器大于某个列表
+                var nodeList = [];
+                for (var i = n + 1; i < this.length; i++) {
+                    nodeList[i - n - 1] = this[i];
+                }
+                return jQuery(nodeList);
+            },
+
+            first: function() { //选择器列表的第一个
+                return this.eq(0);
+            },
+
+            last: function() { //选择器列表中的最后一个
+                return this.eq(this.length - 1);
+            },
+
+            prepend: function(str) { //在dom中数据的前面插入
+                return this.each(function() {
+                    this.insertAdjacentHTML('afterbegin', str);
+                });
+            },
+
+            append: function(str) { //在dom中数据的尾部插入
+                return this.each(function() {
+                    this.insertAdjacentHTML('beforeend', str);
+                });
+            },
+
+            offset: function() { //获取位置
+                var top = 0,
+                    left = 0
+                var target = this[0];
+                while (typeof target != "undefined" && target.offsetParent) {
+                    top += target.offsetTop;
+                    left += target.offsetLeft;
+                    target = target.offsetParent;
+                }
+                return {
+                    top: top,
+                    left: left,
+                }
+            },
+
+            hide: function() { //隐藏
+                return this.each(function() {
+                    this.style.display = "none";
+                });
+            },
+
+            show: function() { //显示
+                return this.each(function() {
+                    this.style.display = "block";
+                });
+            },
+
+            toggle: function(state) { //未实现完整
+                if (typeof state === "boolean") {
+                    return state ? this.show() : this.hide();
+                }
+            },
+
+            children: function() { //获取dom的children
+                return $(this.each(function() {
+                    return Array.prototype.slice.call(this.children);
+                }, 1));
+            },
+
+            remove: function() {
+                return this.each(function() { //发现中间件不支持dom的remove,更换一种方式
+                    //this.remove();
+                    this.parentNode.removeChild(this);
+                });
+            },
+
+            hasClass: function(val) { //判读是否有对应的class
+                return this.each(function() {
+                    return this.classList.contains(val);
+                }, 1);
+            },
+
+            addClass: function(val) { //增加对应的class
+                return this.each(function() {
+                    return this.classList.add(val);
+                });
+            },
+
+            removeClass: function(val) { //删除对应的class
+                return this.each(function() {
+                    return this.classList.remove(val);
+                });
+            },
+
+            attr: function(key, value) { //设置/获取dom的value
+                if (value != undefined) {
+                    return this.each(function() {
+                        this.setAttribute(key, value);
+                    });
+                } else {
+                    return this.each(function() {
+                        return this.getAttribute(key);
+                    }, 1);
+                }
+            },
+
+            removeAttr: function(key) { //删除dom的value
+                return this.each(function() {
+                    this.removeAttribute(key);
+                });
+            },
+
+            html: function(str, tag) { //设置/获取标签内部的html
+                tag = tag || 'innerHTML';
+                if (typeof str != 'undefined') {
+                    return this.each(function() {
+                        this[tag] = str;
+                    });
+                } else {
+                    return this.each(function() {
+                        return this[tag];
+                    }, 1);
+                }
+            },
+
+            text: function(str) { //设置/获取标签内部的文本信息
+                return this.html(str, 'innerText');
+            },
+
+            out: function(str) { //设置/获取包含本身标签的html
+                return this.html(str, 'outerHTML');
+            },
+
+            width: function(str) { //获取或设置宽度
+                if (typeof str == 'string' || typeof str == 'number') {
+                    return this.css('width', str);
+                }
+                return this[0].getBoundingClientRect().width;
+            },
+
+            height: function(str) { //获取或设置高度
+                if (typeof str == 'string' || typeof str == 'number') {
+                    return this.css('height', str);
+                }
+                return this[0].getBoundingClientRect().height;
+            },
+
+            ready: function(fn) {
+                document.addEventListener('DOMContentLoaded', function() {
+                    document.removeEventListener('DOMContentLoaded', arguments.callee, false); //注销事件，避免反复触发                 
+                    fn(); //执行函数  
+                }, false);
+            }
+
+        });
+
+        jQuery.log = jQuery.fn.log = function() { //兼容ipanel和非Presto内核的log
+            if (navigator.appName.indexOf("iPanel") > -1) {
+                iPanel.debug([].slice.call(arguments).join(', '));
+            } else {
+                console.log.apply(null, arguments);
+            }
+            return this;
+        }
+        window.jQuery = window.$ = jQuery;
+    })(window);
+}
